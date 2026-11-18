@@ -73,6 +73,9 @@
 
 ### B3 重命名目录
 - **前提/界面**：目录行选中后，DOM 出现浮层 `span.EidtIco`，内含 `a.list_rename` / `a.popMoveBnt` / `a.list_delete`。
+- ⚠️ **关键（2026-11-18 补）：`input.x-form-text` 零尺寸（rect 0,0,0,0）的真正根因是目标行在视口外**。ExtJS 把单元格编辑器定位到屏幕外，导致 `page.fill` 报"zero-sized bounding box"。
+  - **成功方法**：重命名前先 `document.getElementById(rid).scrollIntoView({block:'center'})` 让行进入视口，再走"真实 click 行 → hover → a.list_rename DOM click → 探测 input 宽>0 → fill → Enter"。本次 W1–W12 用此法一次成功，零残留。
+  - **无效尝试（勿重复）**：DOM 设 value + dispatchEvent(input/change)、CDP `Input.dispatchKeyEvent` 发 Enter、`Ext.getCmp(editorId).completeEdit()`、`field.setValue()+completeEdit()`——这些能让输入框值变化，但**树不更新**，因为绕过了 ExtJS 与 tree cell 的绑定。根因是定位不是事件，回视口才是正解。
 - **触发**：
   1. **必须用真实鼠标选中行**：`page.click('tr#treeview-...-record-<id>')`（见下方失败原因，DOM click 会导致重命名框不出）。
   2. `page.evaluate(() => document.querySelector('a.list_rename').click())` → 出现输入框 `input.x-form-text`（值为旧名）。
@@ -169,7 +172,7 @@
 - **目的**：进入发放环节。
 
 ### D4 选择发放班级（易错）
-- **前提/界面**：点"发放对象" anchor → 弹窗列出班级（如"智能2401，02，03"、"默认班级"）。
+- **前提/界面**：点"发放对象" anchor → 弹窗列出班级（如"教学班A"、"默认班级"）。
 - **触发**：
   1. 打开发放对象：DOM 找 `a` 文本==='发放对象' 且 offsetWidth>0 的元素点它（文本点击有 3 处匹配会 ambiguity）。
   2. 勾选班级：`page.evaluate` 找 `a.classData[data="<clazzId>"]` → `closest('li').querySelector('.class_check_one')` → 若未 `class_checked` 则 `.click()`。
@@ -190,6 +193,129 @@
 - **关注**：作业名称、发放班级、作答时间、统计 `0待批 / X已交 / Y未交`（Y = 已收到作业的人数，即发放成功人数）。
 - **失败原因**：直接 `newPage()` 后被重置（G1）；用 `task.page('p1')` goto 更稳。
 - **目的**：以数据证明发布成功，而非推测。
+
+### D7 题库选题必须等"题目层"再勾选（2026-11-18 新增，最关键坑）
+- **前提/界面**：作业编辑器 → 选题 → 从题库选题，进入题库页后是一列 `li.list-folder` 文件夹。
+- **触发**：`page.evaluate(f => searchDirec(f, courseid), folderId)` 进入某周文件夹，然后勾选题目。
+- **失败原因（血泪）**：`searchDirec` 是异步的。若调用后立刻勾选 `input[type=checkbox].item`，
+  此时 DOM 里还是**文件夹层**的 12 个 checkbox（文件夹本身也带 `.item`），会勾中 12 个文件夹；
+  点"完成选题"弹出 JS alert **"请选择题目"**，整个作业创建失败且不留草稿（作业库/列表均无痕迹）。
+  固定 `waitForTimeout` 也不可靠——页面切换时长抖动。
+- **成功方法（唯一验证有效）**：`searchDirec` 后用 `waitForFunction` 等**题目层三标志同时成立**：
+  ```js
+  await E.waitForFunction(() =>
+    /已选\s*\d+\s*题/.test(document.body?.innerText||'') &&   // 底部"已选N题"按钮出现
+    document.querySelectorAll('input[type=checkbox].item').length === 4, // 恰好4题（文件夹层是12）
+    undefined, {timeout:15000});
+  ```
+  再读 DOM 校验三标志：`li.list-folder` 数量=0、`.item` 数=4、含"已选N题"。
+  勾选后验证"已选 4 题"（`body.innerText.match(/已选\s*(\d+)\s*题/)`），
+  完成选题后验证编辑器 URL 回到 `goToWorkEditor` 且含"题量 4"。任一不符立即停止，绝不带病往下走。
+- **注意**：alert 弹出时下一次 evaluate 会抛 `PageDialogOpenedError`，需先 `acceptDialog()` 清理。
+- **目的**：根除"批量发作业产生半成品/静默失败"——实测一批 12 个作业中曾有 2 份因此失败，改用本方法后 100% 成功。
+
+### D8 新建作业的可靠打开方式（2026-11-18 新增）
+- **触发**：作业列表 → 新建作业 → 手动创建 → 编辑器 popup。
+- **失败原因**：① "手动创建"下拉项需**先 hover「新建作业」**才出现（坐标约 112,68），直接 click 不展开；
+  ② 找 ref 的循环若不在首次命中处 return，会把相邻行的多个数字拼成 `@[ref=184,184` 非法选择器；
+  ③ 编辑器标签每次递增，跨调用硬编码 `task.page('p4')` 必失败（标签已被回收）。
+- **成功方法**：
+  1. `await p1.mouse.move(112,68); await p1.waitForTimeout(800);`
+  2. `const s = await p1.snapshot();`
+  3. 严格正则取**紧邻单个 ref**：`s.match(/anchor \[ref=(\d+)[^\]]*\]\s*\n\s*text "手动创建"/)`
+  4. `const before=(await task.tabs()).map(t=>t.label); const pp=p1.waitForEvent('popup',{timeout:10000}).catch(()=>null);`
+     `await p1.click('@'+m[1]); const ed=await pp;`
+  5. 编辑器标签 = `(await task.tabs()).map(t=>t.label).find(l=>!before.includes(l))`，用差集动态取，勿硬编码。
+- **注意**：`goto` 后 `document.body` 可能为 null，须先 `waitForFunction(()=>!!document.body&&...)` 再 evaluate。
+- **目的**：稳定打开作业编辑器，支撑批量发布。
+
+### D9 批量发作业抗掉线策略（2026-11-18 新增）
+- **现象**：连续快速发作业时，学习通会把**所有标签页**登录态一起踢到登录页（账号级失效），
+  需用户重新扫码（Agent 无凭据）。
+- **策略**：① 每个作业发布后 `goto` 作业列表验证标题出现再进下一个；
+  ② 列表页判重——标题已存在则 SKIP（可从中断处安全续跑，不重复创建）；
+  ③ 单个作业任一校验失败即 `throw` 停止，不连锁产生半成品；
+  ④ 掉线后凭清单从缺失处续发。
+- **注意**：一次 nodejs 调用串行发 6 个作业会超单次超时被 SIGTERM，但**已发的作业仍会保存成功**——
+  被终止后先查作业列表确认实际进度，再补发缺的，切勿整体重跑。
+- **目的**：把"掉线/超时"造成的损失降到最低，保证最终 12 个作业齐全。
+
+### D10 从作业库直接"发布"到另一个班级（2026-11-18 新增，二次发放利器）
+- **场景**：已发布的作业（作业库里已有）要再发给**另一个班级/教学班**。不要逐个新建，直接复用作业库那份发布。
+- **入口 URL（可直接 goto）**：
+  `https://mooc2-ans.xuexitong.com/mooc2-ans/work/library/setting?courseid=<cid>&cpi=<cpi>&workLibraryId=<作业库ID>&from=`
+  作业库 ID = 作业库列表每行 `ul.dataBody_td[data="<id>"]` 的 data 值（`a.rename_title` 的标题可用于匹配编号）。
+- **触发**：作业库列表 → hover 目标作业行 → 每行 `a.jb_btn`（文本"发布"）→ popup 发布设置页；
+  或直接 goto 上面的 URL 最稳（popup 标签易在 navigate 时 target 失效，用主标签 goto 更可靠）。
+- **发布设置页结构**：顶部"发放对象"anchor → 弹窗列出 `a.classData[data="<clazzId>"]`；
+  底部"发放"anchor；成功标志 `body.innerText` 含"发布成功"。
+- **班级是否已发布判定**：`a.classData[data="<clazzId>"]` 的 `pubstatus` 属性：`'0'` 已发布、`'-1'` 未发布。
+  勾选用 `closest('li').querySelector('.class_check_one')`，若 class 不含 `class_checked` 则 click（同 D4）。
+- **成功方法（批量稳健版）**：
+  ```
+  for each job:
+    goto(SET_URL + workLibraryId)
+    waitForFunction(/发放对象/.test(body))
+    evaluate 点"发放对象"anchor → waitForFunction(classData 出现)
+    evaluate: 若 pubstatus!=='0' 且未勾 → 点 .class_check_one 到 class_checked
+    evaluate 点"确认"(a.jb_btn_92) → 校验 body 含班级名
+    evaluate 点"发放"(a.jb_btn) → waitForFunction(/发布成功/)
+    单个 try/catch，pubstatus==='0' 则 SKIP（天然可续跑、防重复）
+  ```
+- **失败原因**：① 用 popup 标签循环 goto 会 "No target with given id found" → 用主标签 p1；
+  ② `waitForFunction` 的 arg 要作为第 2 参数传入，回调里用形参，别用 `arguments[0]`（箭头函数无 arguments）。
+- **验证**：切到目标班 `work/list?...&selectClassid=<clazzId>`，看作业数、班级标签、未交人数（=该班学生数，证明真发放）。
+- **目的**：把已建好的作业二次发放到新班级，零重建、可续跑。
+
+### D11 新建"简答题/主观题"作业（UEditor 富文本 + AI 批阅，2026-11-18 新增）
+
+- **场景**：要出简答/论述/评析/改错类**主观题**（如提示词构造题、提示词评析改错题）。学习通作业编辑器可直接加简答题，不必走题库模板。
+- **入口**：作业库 → hover「新建作业」→ 菜单点「手动创建」→ popup 打开 `work/goToWorkEditor?...workid=`（编辑器在新标签）。
+- **题型**：编辑器"添加题目"区有 单选题/多选题/填空题/判断题/**简答题**/更多；点「简答题」即加一题。
+- **题干/参考答案/解析都是 UEditor**（不是 textarea！）：
+  - `textarea[name="content"]` 尺寸为 0，`fill()` 无效。
+  - 正确写法：`UE.instants['ueditorInstant0']`=题干、`['ueditorInstant1']`=参考答案、`['ueditorInstant2']`=解析（0/1/2 顺序按页面字段出现顺序）。
+  - **必须用已存在的实例对象**：`UE.instants['ueditorInstant0'].setContent(html, false)`。
+  - ⚠️ 不要用 `UE.getEditor('ueditorInstant0')`——会触发重新渲染并报错，内容写不进去。
+  - HTML 里避免裸 `<` `>`；要加粗用 `<strong>`，引用原文用 `<blockquote><p>…</p></blockquote>`（编辑器能正常渲染）。
+- **分值**：`input#score` 默认 `5.0`，但评分机制默认"百分制"且 `input#questionScoreRatio=100`，单题时总分即 100。
+  多题且要自定义分值 → 先选评分机制「自定义（自行设置每道题的分值）」，再逐题改 `input#score` 并 dispatch `input`/`change`。
+- **开启 AI 批阅**：`a.useAi`（外层 `.kaiguan` 是容器，点容器无效）。
+  - 开启前：`<i style="left: 2px">`；开启后：class 增加 `ai-Dgblue`、`<i style="left: 18px">` ← 以此判断成功。
+  - 开启后 AI 会结合题干+答案+得分点给推荐分与批语；参考答案里写清"评分标准/区分点"效果最好。
+- **保存与发布（关键坑）**：`document.querySelectorAll('a')` 里找到"保存并发布"再 `a.click()` **无效**（页面无反应、无提示）。
+  必须：`snapshot` 取顶部锚点 `anchor [ref=3] text "保存并发布"` → `page.click("@3")` 真实点击。
+  成功后**同一标签**跳到 `work/library/setting?…&workLibraryId=<新ID>&fromCreate=1`。
+- **发放**：在发放设置页走 D10 的"发放对象 → 勾班级 → 确认 → 发放"，成功标志"发布成功"。
+- **验证**：切各班 `work/list?...&selectClassid=<clazzId>`。
+  ⚠️ **刚发布的作业首次进列表可能显示"0 未交"**（统计延迟），`reload()` 一次即变为正确人数（如 69 / 70）；不要据此判定发放失败。
+- **目的**：把"考提示词/AI 编程能力"这类无法用客观题考的能力，落成可在学习通批阅（且能 AI 预批）的主观题。
+
+### D12 多题型题库导入（5 种题型一次导入）+ 题干 HTML 转义（2026-11-18 新增）
+
+- **场景**：一份作业要"题型齐全"（单选/多选/填空/判断/简答），走题库 xls 一次导入再"从题库选题"最省事。
+- **官方模板 `importQuestionTemplateNew.xls` 各题型正确格式（实测）**：
+  | 题型 | 正确答案列 | 选项数 | 选项A~ 列 |
+  |---|---|---|---|
+  | 单选题 | 字母，如 `C` | 4 | 选项内容 |
+  | 多选题 | 连写字母，如 `BCD` / `ABC` | 4 | 选项内容 |
+  | 判断题 | `A`(对) / `B`(错) | 2 | `正确` / `错误` |
+  | **填空题** | **留空** | **空数**（单空=1） | **依次填每空答案**；一个空多答案用 `;` 隔开 |
+  | **简答题** | **填 `A`** | **1** | **参考答案全文**（可很长） |
+  - 常见错误：把填空/简答的答案写进"正确答案"列 → 导入后答案丢失或错位。
+  - 说明行（第 2 行）必须删除，模板自带"导入前请删除此行"。
+- **⚠️ 题干会被按 HTML 渲染，裸 `<` `>` `&` 会被吞/解析乱**：本次 C 代码题干中
+  `#include <stdio.h>` 被吞成 `#include`、`n < MAXN` 变 `n`、`&&` 丢失。
+  - **解法**：写 xls 前对题干/选项/答案解析统一转义：`& → &amp;`、`< → &lt;`、`> → &gt;`（顺序：先 & 再 < >）。
+  - 验证方法：导入后进文件夹读 `document.body.innerText`，断言 `includes('#include <stdio.h>')`、`includes('n < MAXN')`、`includes('&&')` 且不含 `&lt;` 字面。
+- **⚠️ Python 字符串里的 `%`**：未做 `%` 格式化时写 `%%s` 会原样输出成 `%%s`（学生看到两个百分号）。直接写 `%s`。
+- **导入结果判定**：弹窗"共N条数据，成功导入N条"；大纲页总数 +N；**题型下拉计数需 `reload()` 后才刷新**（缓存），导入后不要用旧计数判断失败。
+- **从题库选题的两个致命点**：
+  1. **"选题 → 从题库选题 → 进文件夹 → 勾选 → 完成选题"必须在同一次 nodejs 调用内完成**。跨调用（或中途换标签）会让编辑器重建为空白：`workid=` 变空、题量 0、标题回默认"新建作业<时间戳>"，选题结果全部丢失。
+  2. **"保存并发布"必须用 snapshot 锚点 `@ref` 真实点击**，DOM `a.click()` 无反应（见 D11）。
+- **删除已发布作业的坑**：在**作业库**删除作业，**不会**撤销已发放到班级的副本 → 班级作业列表仍残留旧作业，学生会看到两条。
+  - 彻底清理：作业库删除后，再到每个班的 `work/list` 里 hover 该行 → 点行内"删除" → 确认（"删除后可在回收站还原"）。按"作答时间"区分新旧两份。
+- **目的**：一次作业覆盖全部题型与全部知识单元，且题干代码原样正确显示。
 
 ---
 
@@ -212,6 +338,34 @@
 
 ### G2 教师端页面间切换的等待
 - 门户 iframe 内点击（资源中心、资料库、作业等）后需等 1.5-1.8s 再快照/下一步，否则点到旧页面元素。
+
+### G3 资料库新建文件夹：默认名与重命名（2026-11-18 新增）
+- **现象**：点"新建文件夹"弹窗，里面有输入框（初始 value="新建文件夹"）、共享范围（公开/私密/部分可见）、确定按钮。
+  用 DOM setter 改 input.value 后点确定，**文件名仍是"新建文件夹"**——框架不认合成事件的值。
+- **成功方法（重命名）**：文件夹行的 HTML 里藏了 `div.rename_con`（display:none），内含
+  `input#renameEnter`（value=原名）和 `a#renameFolderName`（确认）。直接 DOM 操作：
+  ```js
+  const ul=document.querySelector('ul[id="<folderId>"]');
+  ul.querySelector('.rename_con').style.display='block';
+  const inp=ul.querySelector('#renameEnter');
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(inp, 新名);
+  inp.dispatchEvent(new Event('input',{bubbles:true}));
+  ul.querySelector('#renameFolderName').click();  // 提交
+  ```
+  双击 `a.rename_title` 或 jQuery trigger dblclick 都**不触发**编辑框，必须显式显示 rename_con。
+  文件夹 id 从 `ul[data-name][id]` 取，或从 `input[name=checkdelete]` 的 value 取。
+- **进入文件夹**：点 `a.rename_title`（用 `getElementById` 取，靠 title 属性匹配会因空格失败）。
+
+### G4 批量上传多文件 PDF（2026-11-18 新增）
+- 上传面板一次最多 50 个文件、单个最大 1G；文件名不能含特殊字符 `~!@#$%^&*+<>?:"{},\;[]/`（中文和 `_` `-` 可以）。
+- `chooser.setFiles([绝对路径数组])` 支持一次多选。但**30 个文件一次上传耗时 > 单次调用超时**，
+  建议每批 10 个，分批后 `waitForTimeout(12-16s)`，再读 `a.rename_title[title$=".pdf"]` 的数量验证。
+- 上传是异步的：setFiles 后立刻读列表可能只显示部分（"等待上传..."状态），需多等一会直到计数稳定。
+- **md 转 PDF（Windows，2026-11-18）**：weasyprint 缺 GTK/Pango 系统库不可用；用 `markdown`+`reportlab` 可行。
+  中文字体注册 `TTFont('CN','C:/Windows/Fonts/simsun.ttc',subfontIndex=0)` + `simhei.ttf` 作粗体。
+  坑：simsun 不含 U+2212(−)/U+2013(–)，转前替换成 `-`；markdown 会把 `<stdio.h>`、`行<n` 当 HTML 标签，
+  需先把 reportlab 标记（b/i/font/br/u）用占位符保护，再转义所有裸 `<`/`>`，最后还原占位符，否则 paraparser 报 "unclosed tags"。
+  脚本见项目 `learning/教学设计/md2pdf.py`。
 
 ---
 

@@ -10,9 +10,9 @@ HEADER = ['目录', '题目类型', '自定义题型', '大题题干', '小题�
           '正确答案', '答案解析', '难易度', '知识点', '标签', '选项数',
           '选项A', '选项B', '选项C', '选项D', '选项E', '选项F', '选项G', '选项H']
 
-OUT_NAME = '人工智能技术及应用_第二章题库导入.xls'
-DIR = '/机器学习与神经网络'
-TAG = '人工智能；机器学习；第二章'
+OUT_NAME = '示例课程_题库导入.xls'
+DIR = '/示例章节'
+TAG = '示例课程；示例章节'
 
 # (题干, [选项A-D], 正确答案, 解析, 知识点)
 single = [
@@ -39,7 +39,7 @@ for r, row in enumerate(rows, start=1):
     for c, v in enumerate(row):
         ws.write(r, c, v)
 
-outdir = os.environ.get('CHAOXING_OUTDIR', 'C:/Users/ufo00/WorkBuddy/2026-11-17-16-15-02/outputs')
+outdir = os.environ.get('CHAOXING_OUTDIR') or os.path.join(os.getcwd(), 'outputs')
 os.makedirs(outdir, exist_ok=True)
 out = os.path.join(outdir, OUT_NAME)
 wb.save(out)
