@@ -32,17 +32,24 @@
 
 ## 安装
 
-将本仓库放入 Agent 的 skills 目录，例如：
+仓库地址：**https://github.com/Teaching-Works-Lab/chaoxing-ops**（public，main 分支）。
 
+方式一（推荐，便于后续更新）：
+
+```bash
+git clone https://github.com/Teaching-Works-Lab/chaoxing-ops.git ~/.workbuddy/skills/chaoxing-ops
 ```
-~/.workbuddy/skills/chaoxing-ops/
-```
+
+方式二：直接把本仓库内容复制到 Agent 的 skills 目录 `~/.workbuddy/skills/chaoxing-ops/`。
 
 保留目录结构：
 
 ```
 chaoxing-ops/
 ├── SKILL.md                         # 主入口：思维链启动协议 + 两层分流 + 决策树 + 5 项铁律
+├── README.md                        # 安装、环境、能力清单、维护方式
+├── CHANGELOG.md                     # 版本明细（按「原子操作更新 / 思维链更新」分栏）
+├── .gitignore                       # 忽略生成物（outputs/、*.xls 等）
 ├── references/
 │   ├── playbooks.md                 # 任务剧本/思维链（六段式，按目标索引 P1–P5）
 │   ├── chain-template.md            # 执行台账模板（把剧本在单次任务里实例化，可续跑）
@@ -50,6 +57,28 @@ chaoxing-ops/
 └── scripts/
     └── gen_qbank.py                 # 学习通官方 20 列题库 xls 生成器
 ```
+
+Skill 由文件系统直接加载，clone / 更新后**无需重启或注册**，下次调用即读新内容。
+
+## 版本与更新
+
+变更明细见 `CHANGELOG.md`。若用方式一安装（本地已是 git 仓库且 `origin` 指向上述地址）：
+
+```bash
+# 拉取最新版本
+git -C ~/.workbuddy/skills/chaoxing-ops pull origin main
+
+# 本地改完同步回 GitHub
+git -C ~/.workbuddy/skills/chaoxing-ops add -A
+git -C ~/.workbuddy/skills/chaoxing-ops commit -m "feat: ..."
+git -C ~/.workbuddy/skills/chaoxing-ops push origin main
+```
+
+维护约定：
+
+- 控件级新坑 → 补 `references/atomic-operations.md`；流程 / 顺序 / 回滚问题 → 修订 `references/playbooks.md`；两类变更建议**分开提交**，便于在 GitHub 历史里区分；
+- 不把课程 ID、班级 ID、教师姓名、题号等一次性业务数据写进仓库；
+- 本机走代理时 git over https 偶发 `schannel: failed to receive handshake` 或 `CONNECT tunnel failed 502`，**直接重试同一命令即可**；推送凭证由 `gh auth setup-git` 配置。
 
 ## 能做什么
 
