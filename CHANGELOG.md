@@ -1,5 +1,13 @@
 # 更新记录
 
+## 2026-11-18（深夜）— 任务 G 补充：G8/G9
+
+资料库上传第二轮实战再补两条原子：**G8**「添加资料」是**切换式弹层**——`page.evaluate` 的合成点击能开下拉但触发不了 `fileChooser`（非用户手势），且 toggle 特性使「点一次立刻读 offsetParent」反复开关弹层；正解是全程可信 `page.click` + 按**可见性（getBoundingClientRect）**判定 + 给可见元素打临时 `id` 再点。同时记录：面板未展开时 `input[type=file]` 不在 DOM（webuploader 懒创建），「直塞隐藏 input」不可行。**G9** iframe 就绪判定须 null-safe（`contentDocument.body` 可为 null）、ready 后固定再等 3s 让脚本绑事件；`mycourse/tch` 直连偶发 45s 导航超时，改 60s + 3 次重试，且 URL 不能省 `t=` 参数。
+
+## 2026-11-18（晚）— 任务 G 补充：G5/G6/G7
+
+资料库上传实战补充三条原子：G5 大文件 docx 上传**静默失败**（5MB 级不出错、不入库，判据必须是 reload 后的计数）与 PNG→JPEG 瘦身方案；G6 相对路径图片的 html 必须内嵌成单文件版再传；G7 资料页 iframe 同源可 `contentDocument` 直操作（绕过 `<img>` 拦截点击），并记录 `coursedata` 直连 URL 的 openc token 失效、须经课程入口重建。
+
 ## 2026-11-18 — 原子操作更新 + 思维链更新
 
 本版本**同时包含两类更新**，缺一不可：控件层继续沉淀「怎么点才生效」，流程层新增「先做什么、何时分支、什么算完成、失败往哪退」，并把链做成每次执行都要走起来的机制。

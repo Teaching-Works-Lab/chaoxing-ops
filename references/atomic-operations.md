@@ -367,6 +367,55 @@
   需先把 reportlab 标记（b/i/font/br/u）用占位符保护，再转义所有裸 `<`/`>`，最后还原占位符，否则 paraparser 报 "unclosed tags"。
   脚本见项目 `learning/教学设计/md2pdf.py`。
 
+### G5 大文件 docx 上传静默失败 + 瘦身方案（2026-11-18）
+- **现象**：按 G1 流程上传 5MB 级 docx，列表短暂出现「等待上传...」行，随后行消失，**刷新后文件从未入库**（「当前页共 N 个」不增加）。36KB 测试 docx 与 1.5MB html 均正常入库 → 体积阈值大约在 2–5MB 之间，且**无任何报错提示**。
+- **误判风险**：面板内的文件名 chip 会一直显示，轮询"列表含文件名"会误判成功；只有 **reload 后按「当前页共 N 个」计数**才是权威判据。
+- **成功方法**：把 docx 里的 `word/media/*.png` 用 PIL 压成 JPEG（maxw=1400、q=85），同步改 `[Content_Types].xml` 加 jpg Default、`word/_rels/document.xml.rels` 的扩展名；5.3MB→0.83MB 后一次成功。LibreOffice 转 PDF 目检确认画质可接受（A4 下约 240dpi）。
+- **目的**：避免"上传成功"假象与无限重试。
+- **首次记录日期**：2026-11-18。
+
+### G6 引用相对路径图片的 HTML 资料必须先内嵌（2026-11-18）
+- **现象**：html 里 `src="./figures/png/*.png"` 单独上传后，学生打开全是裂图。
+- **成功方法**：预处理把图片转 JPEG data URI 内嵌，产出「单文件版」再上传（8 张 5.3MB png 压缩后 html 约 1.5MB，直接可开）。上传面板接受 .html 类型。
+- **目的**：资料库单文件即用，不依赖 zip 解压。
+- **首次记录日期**：2026-11-18。
+
+### G7 资料页 iframe 同源可直接 contentDocument 操作（2026-11-18）
+- **现象**：勾选文件行 checkbox 用 `@ref` 点击被行内 `<img>` 拦截（intercepts pointer events）。
+- **成功方法**：资料 iframe 与父页同为 `mooc2-ans.chaoxing.com` 同源，`page.evaluate` 里经 `document.querySelector("iframe").contentDocument` 直接 DOM 操作：`cb.checked=true` + `dispatchEvent(new Event("change",{bubbles:true}))`，工具栏「删除」随即出现；确认弹层是普通 anchor（`删除文件？` → 弹层内 `删除`/`取消`），用 ref 点击即可。
+- **附带**：`coursedata` 直连 URL 的 `openc` token 离开页面后失效（刷新报"长时间没有操作或无权限"），必须从课程入口 `isNewCourse?courseId=...` 进门户后点「资料」重建，每次 enc 会变。
+- **目的**：批量选中/删除/重命名等列表行操作不再受遮挡层影响。
+- **首次记录日期**：2026-11-18。
+
+### G8 「添加资料」是切换式弹层：必须可信点击 + 可见性判定（2026-11-18 晚）
+- **现象**：`page.evaluate` 里 `a.click()` 合成点击**能打开下拉**，但点「选择本地文件」时 `waitForFileChooser` 必然 25s 超时——非用户手势不触发原生文件框。
+- **更隐蔽的坑**：`.addData a`（添加资料）是**toggle**。若用「点一次 → 立刻读 `offsetParent`」判断，弹层动画还没结束就判负，再点一次又把它关掉，形成来回抖动，表现为「有时能开有时不能」。实测 5 次里只成 2 次。
+- **成功方法**（每步都要可信点击，且每步都按**可见性**而非 `offsetParent` 判定）：
+  ```js
+  const visible = (txt) => page.evaluate((t) => {
+    const d = document.querySelector("iframe").contentDocument;
+    const vis = [...d.querySelectorAll("a,li,span,div")]
+      .filter(e => e.innerText && e.innerText.trim() === t)
+      .filter(e => { const r = e.getBoundingClientRect(); return r.width > 20 && r.height > 10; });
+    if (vis.length) { vis[0].id = "visTarget"; return true; }   // 打临时 id 绕开多元素歧义
+    return false;
+  }, txt);
+  // 打开弹层：先查已开，未开才点，最多 4 次，每次等 3.2s
+  // 再 page.click("loc=css:#visTarget") 依次点「本地上传」→「选择本地文件」
+  const chooserP = page.waitForFileChooser({ timeout: 25000 });
+  await page.click("loc=css:#visTarget", { label: "选择本地文件" });
+  const ch = await chooserP; await ch.setFiles([absPath]);
+  ```
+  给可见元素打 `id` 再 `page.click("loc=css:#id")`，比 `a.jb_btn_168` 这类 class 选择器稳（同类元素在 DOM 里有多份，第一份常是 0×0 隐藏副本）。
+- **附带**：面板未展开时 `input[type=file]` **根本不在 DOM 里**（webuploader 容器随面板创建），所以"直接给隐藏 input 塞文件"这条路走不通。
+- **首次记录日期**：2026-11-18。
+
+### G9 资料页 iframe 就绪判定要 null-safe 且要等脚本初始化（2026-11-18 晚）
+- **现象**：`goto` 后 `document.querySelector("iframe").contentDocument.body` 可能为 `null`（about:blank 阶段），直接 `contentDocument.body.innerText` 抛 TypeError；而 `.addData a` 已存在时脚本可能还没绑事件，立刻点击无反应。
+- **成功方法**：轮询时用 `try/catch` + 逐级判空，并以 `/.addData a/` 存在作为 ready 信号；**ready 之后再固定等 3s** 让 iframe 内脚本绑定完成，再点「添加资料」。
+- **附带**：`mycourse/tch?...` 直连偶发 `PageNavigationTimeoutError`（45s 未 commit），改 60s 超时 + 最多 3 次重试即可；URL 里的 `t=` 参数不能省，去掉后 iframe 不加载。
+- **首次记录日期**：2026-11-18。
+
 ---
 
 ## 任务 E：复盘沉淀
