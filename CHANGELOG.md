@@ -133,3 +133,13 @@ Skill 已托管到 GitHub，本条把「怎么装、怎么更新」补进文档�
 
 - `references/atomic-operations.md`：新增 I10，记录界面特征、失败原因、正确做法（回试卷/组卷源头设置「题目序号：按题型编号」或自定义题号后重新生成答题纸）。
 - `references/paper-exam/domains/D6.md`：新增「题号独立编号」小节，并补检索词（题号／独立编号／每大题重新编号／连续编号／按题型编号／题目序号）。
+
+---
+
+## 2026-11-25（深夜）— I11：题号独立编号的已验证落地路径
+
+用户确认「复制试卷重新发布」方案后，实测跑通全流程并沉淀为 I11。
+
+- `references/atomic-operations.md`：新增 I11——试卷管理「复制」已发布卷 → 编辑副本（不带 `edit-grouppaper=true`，设置可改）→ 题目序号改「按题型编号」（`#serialNumberMode` 0→1）→ 完成 → 用副本重新发布；记录已发布卷编辑页锁死判据与答题纸/DOM/PDF 三层验证证据。
+- `references/paper-exam/domains/D6.md`：补「已验证落地路径」小节与检索词（复制试卷／副本／重新发布／serialNumberMode／编辑锁死／edit-grouppaper）。
+- 实测结果：新卷 `587029210`（sjid `2215173`）题号 1 起分块；新考试 `t8877735`（examid `4339645`）63 人；旧考试 `t5709368` 改名标注作废；新答题纸 PDF 已下载。
