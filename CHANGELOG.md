@@ -143,3 +143,13 @@ Skill 已托管到 GitHub，本条把「怎么装、怎么更新」补进文档�
 - `references/atomic-operations.md`：新增 I11——试卷管理「复制」已发布卷 → 编辑副本（不带 `edit-grouppaper=true`，设置可改）→ 题目序号改「按题型编号」（`#serialNumberMode` 0→1）→ 完成 → 用副本重新发布；记录已发布卷编辑页锁死判据与答题纸/DOM/PDF 三层验证证据。
 - `references/paper-exam/domains/D6.md`：补「已验证落地路径」小节与检索词（复制试卷／副本／重新发布／serialNumberMode／编辑锁死／edit-grouppaper）。
 - 实测结果：新卷 `587029210`（sjid `2215173`）题号 1 起分块；新考试 `t8877735`（examid `4339645`）63 人；旧考试 `t5709368` 改名标注作废；新答题纸 PDF 已下载。
+
+---
+
+## 2026-11-25（深夜）— I12：压缩答题纸主观题答题框到最少页数
+
+用户嫌答题纸 10 页太浪费，要求压到一张 A3 正反面。实测定位到主观题 `smp-card-blank-extra` 额外框 `lineNumber` 被撑到 148/121/97/70 行、每题独占一页。
+
+- `references/atomic-operations.md`：新增 I12——`SmpCardBlankRect.props.item` 是响应式可写对象，设 `lineNumber=8`/`zoneHeight=180` 后**必须调 `SmpCard.ctx.onCardHeightChange()` 触发 `scheduleMergeCard()` 重新合并分页**页数才会减（只改高度不减页），保存＋刷新验证＋下载定位检查；记录根因、验证证据与不透题提醒。
+- `references/paper-exam/domains/D6.md`：新增「压缩页数/答题空间」小节与检索词（压缩页数／答题框太大／lineNumber／zoneHeight／onCardHeightChange／A3正反面等）。
+- 实测结果：答题纸从 10 页压到 4 栏（一张 A3 正反面，PDF 物理 2 页），保存成功「题量24 分值100」，刷新保持；新 PDF `智能制造装备-答题纸-A卷-4页版.pdf` 内容齐全（考试码/学号/座位号/各题型）。

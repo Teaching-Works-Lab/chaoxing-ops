@@ -590,6 +590,20 @@
 - **验证证据**：答题纸 DOM 中客观题各 `.txChoice` 的 `dt` 序列为 `1..8 / 1..4 / 1..6`；主观题为 `1.(10分) [四题1]` 等；下载 PDF 后 `pypdf` 也能读到分块 1 起编号。
 - **首次记录**：2026-11-25。
 
+### I12 考试答题纸：把主观题答题框压缩到最少页数（A3 正反面）
+
+- **触发**：答题纸预览页数过多（本次 10 页），全是空白答题框把主观题撑到每题独占一页，打印成本与装订都浪费。目标压到最少（本次 4 栏＝一张 A3 纸正反面）。
+- **根因**：主观题（简答/综合）在 `window.param.paper.questionList` 里是 `smp-card-blank` 主框 + 若干 `smp-card-blank-extra` 额外框。每个额外框的 `lineNumber`（行数）、`zoneHeight`（像素高）被撑到极大（本次实测 148/121/97/70 行、`zoneHeight` 到 1070），每个框独占一个分页容器，PageCount 直接等于框数。内容 `content` 其实是空的，纯属空间浪费。客观题不受影响。
+- **为什么改高度不减页**：只把 `lineNumber/zoneHeight` 改小，DOM 里 `.txShort` 的 style.height 会变，但分页 `共 N 页` 不变——页数由 SmpCard 组件的 questionGroup 分组数决定，必须触发重新合并卡片。
+- **成功方法（ego-browser / page.evaluate）**：
+  1. 遍历 Vue vnode 树（`document.getElementById('app')._vnode`，递归 `vnode.component` + `vnode.children`）找所有 `name === 'SmpCardBlankRect'` 的组件，其 `props.item` 是**可写响应式对象**（`__v_isReactive=true`）。
+  2. 对每个 `item` 设 `lineNumber=8`、`zoneHeight=180`（10 分简答/15 分综合都够写；想更省可到 6 行/140）。改完 `window.param.paper.questionList` 会同步。
+  3. **关键一步**：找到 `name === 'SmpCard'` 组件，调 `ctx.onCardHeightChange()`（内部 `scheduleMergeCard()`），触发重新合并卡片分页；等 2 秒，页数立即从 10 → 4。这一步不能省。
+  4. 点「保存」（提示「保存成功！该试卷题量24，分值100」），刷新页面验证页数保持 4，再点「下载」→ 定位检查弹窗点「下载」→ `page.waitForEvent('download')` 保存 PDF。
+- **验证证据**：`pypdf` 读 PDF：物理页数 2（一张 A3 正反面，内部标记「第1-4页（共4页）」＝二栏×双面），考试码 `t8877735`、学号/座位号、单选/多选/判断/简答4题/综合2题齐全。
+- **注意**：题干内容标记 `[四题1]`/`[五题1]` 来自「题目设置 → 显示题目内容」开关；若要求前后不透题需另关此开关（本次用户此前自行调过，未擅自改）。
+- **首次记录**：2026-11-25。
+
 ---
 
 ## 任务 E：复盘沉淀
