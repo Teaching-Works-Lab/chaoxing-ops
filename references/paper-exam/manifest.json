@@ -1,0 +1,72 @@
+{
+  "package": "chaoxing-paper-exam-visual-kb",
+  "version": "1.0.0",
+  "source": "沧州交通学院纸考网评操作手册（附件3）",
+  "owner_skill": "chaoxing-ops",
+  "physical_path": "/Users/aa/.workbuddy/skills/chaoxing-ops/references/paper-exam",
+  "description": "77 张纸考网评界面截图的原子化语义节点；供其他 skill 按节点ID/功能域/关键词调用，不复制副本。",
+  "node_count": 77,
+  "domains": [
+    {
+      "id": "D1",
+      "name": "登录与身份绑定",
+      "node_file": "domains/D1.md",
+      "count": 3
+    },
+    {
+      "id": "D2",
+      "name": "题库建设",
+      "node_file": "domains/D2.md",
+      "count": 14
+    },
+    {
+      "id": "D3",
+      "name": "组卷",
+      "node_file": "domains/D3.md",
+      "count": 14
+    },
+    {
+      "id": "D4",
+      "name": "试卷管理与保密",
+      "node_file": "domains/D4.md",
+      "count": 8
+    },
+    {
+      "id": "D5",
+      "name": "发布考试与考生管理",
+      "node_file": "domains/D5.md",
+      "count": 12
+    },
+    {
+      "id": "D6",
+      "name": "考试答题纸（纸考专用）",
+      "node_file": "domains/D6.md",
+      "count": 4
+    },
+    {
+      "id": "D7",
+      "name": "批阅",
+      "node_file": "domains/D7.md",
+      "count": 15
+    },
+    {
+      "id": "D8",
+      "name": "导出考试材料与归档",
+      "node_file": "domains/D8.md",
+      "count": 7
+    }
+  ],
+  "query_entry": "query.py",
+  "query_examples": [
+    "python3 query.py --domain D6",
+    "python3 query.py --search 答题纸 --domain D6",
+    "python3 query.py --node PE-D4-I033",
+    "python3 query.py --image image33.png",
+    "python3 query.py --list"
+  ],
+  "increment_rule": "新增认识只改 semantics_all.json 对应 id 条目，再跑 build_kb.py 与 package_kb.py；节点ID由(域,图号)决定，保持稳定。",
+  "cross_skill_links": {
+    "chaoxing-ops/SKILL.md": "挂接本包 INDEX.md",
+    "exam-word-skill/SKILL.md": "路径引用本包，试卷文档侧 vs 超星平台侧分工"
+  }
+}

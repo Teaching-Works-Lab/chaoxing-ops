@@ -291,6 +291,15 @@
   ⚠️ **刚发布的作业首次进列表可能显示"0 未交"**（统计延迟），`reload()` 一次即变为正确人数（如 69 / 70）；不要据此判定发放失败。
 - **目的**：把"考提示词/AI 编程能力"这类无法用客观题考的能力，落成可在学习通批阅（且能 AI 预批）的主观题。
 
+### D14 批量补发时列表统计延迟与权威判据（2026-11-24 新增）
+
+- **场景**：从作业库批量补发 28 份作业到某班，每份页面都出现"发布成功"，`work/list` 条数也对（38/38）。
+- **现象**：刚发布完的作业在 `work/list` 里显示 `作答时间：当天HH:MM（无截止）`、`0待批 0已交 0未交`，看起来像没发给学生。
+- **判定**：`reload()` 后仍是 0——这不是发放失败，是统计刷新延迟（发放侧的 `pubstatus` 已立即变 `'0'`）。
+- **权威判据**：逐份 `goto` 发放设置页，读 `a.classData[data="<clazzId>"]` 的 `pubstatus`——`'0'` 即已发放。批量验证以它为准，不要只看 `work/list` 的已交/未交。
+- **注意**：由于发放设置页默认起始时间是当前时刻、结束时间留空，新发作业在列表里显示"当天时刻、无截止"，这是保持默认设置的结果（D3）。
+- **目的**：避免把"统计延迟"误判为发放失败而重发，造成重复副本（P4 回滚代价高）。
+
 ### D12 多题型题库导入（5 种题型一次导入）+ 题干 HTML 转义（2026-11-18 新增）
 
 - **场景**：一份作业要"题型齐全"（单选/多选/填空/判断/简答），走题库 xls 一次导入再"从题库选题"最省事。
@@ -415,6 +424,146 @@
 - **成功方法**：轮询时用 `try/catch` + 逐级判空，并以 `/.addData a/` 存在作为 ready 信号；**ready 之后再固定等 3s** 让 iframe 内脚本绑定完成，再点「添加资料」。
 - **附带**：`mycourse/tch?...` 直连偶发 `PageNavigationTimeoutError`（45s 未 commit），改 60s 超时 + 最多 3 次重试即可；URL 里的 `t=` 参数不能省，去掉后 iframe 不加载。
 - **首次记录日期**：2026-11-18。
+
+### D13 只给课程名时定位课程并一次读出全部作业列表（2026-11-24 新增）
+
+- **场景**：用户只说课程名（如「智能制造装备」），要查该课程已布置的作业，没有 courseId/clazzId。
+- **入口链路**：个人空间 `https://i.chaoxing.com/base?ws=1` → 左侧菜单「课程」项的 `div[role=menuitem]` 上有 `dataurl`（形如 `https://mooc2-ans.chaoxing.com/visit/interaction?s=...`），**直接 goto 这个 URL** 最稳；DOM click 菜单项不跳转，`page.click` 还会被浮层拦截报 "div intercepts pointer events"。
+- **课程搜索**：课程列表搜索框 `input[placeholder="搜索"]` → `fill(课程名)` 后**必须 `press('Enter')` 才过滤**；只 fill 不回车列表不变。
+- **取参数**：搜索结果的课程链接是 `mooc1.chaoxing.com/course/isNewCourse?courseId=<cid>&...&cpi=<cpi>`；goto 后跳到 `mooc2-ans/mycourse/tch?...&clazzid=<clazz>&enc=<token>&t=<ts>`，此处拿全 courseId / clazzId / cpi / enc。
+- **进作业列表**：门户左侧「作业」点击后，`iframe` 里才是 `work/list?...&openc=<token>&ut=t`；直接读取该 iframe 的 `contentDocument.location.href` 并 `goto`，比跨调用点菜单稳（G1）。
+- **一次读全**：在 `work/list` URL 追加 `&pages=1&size=100`，实测单次最多返回 **50 条**（超过也不分页），50 条以内一页拿全，不必翻页。
+- **结构化提取**：`li[id^="work"]` 为一行；标题取 `h2.list_li_tit`，班级取 `.list_class` 的 `title` 属性，`innerText` 用 `/作答时间：(.+?)\s+0待批\s*(\d+)\s*已交\s*(\d+)\s*未交/` 取时间/已交/未交。
+- **注意**：列表默认「全部班级」，不要按 `clazzid` 猜班级；跨年时当年日期会省略年份（如 `10-21`），与上一年带 `2025-` 的记录混排，按班级分组时别按年份切。
+- **目的**：把「按课程名查已布置作业」从反复试错变成固定链路，且能一页拿全所有记录。
+
+### D14 把整份 Word 试卷智能导入到「试卷库」形成试卷（2026-11-25 新增）
+
+- **场景**：用户说「把期末考试 A 卷上传到考试/形成试卷」。这是**试卷库**导入，不是作业发布（任务 D）、也不是题库导入（任务 A）。试卷库与题库共用 `qbank/smartimport` 页面，靠 URL 里的 `paperLibraryId` 区分。
+- **入口**：试卷库 `/mooc2-ans/exam/paperlist?courseid=<cid>&cpi=<cpi>` → 「新建考试」→ 编辑页 `/mooc2-ans/exam/create-exampaper?courseid=..&paperid=<pid>&cpi=..&ut=t` → 「智能导入」跳到 `/mooc2-ans/qbank/smartimport?...&paperLibraryId=<pid>`。用户若已打开该页，直接 goto 其 URL 重建现场即可。
+- **必须先把 Word 转成学习通格式**（可直接上传学生卷会识别错）：下载模板 `/mooc1.chaoxing.com/import-export-ans/template/recommendedFormat.docx`（页面「推荐格式」→ `downTemplate()`），格式要点：
+  - 题干前加 `【单选题】`/`【多选题】`/`【判断题】`/`【简答题】`，自定义题型（如 `【综合应用题】`）会被识别为新题型并弹确认框；
+  - 每题另起一行 `答案：B` / `答案：ABC`；判断题答案写 `答案：对/错`（页面会转成 A 对 B 错）；
+  - 可附 `知识点：`、`难易程度：`、`答案解析：`；简答题正文写进 `答案：`，评分细则写进 `答案解析：`。
+  - 本项目生成脚本：`gen_chaoxing_import.py`（从 exam-spec + objective.json + 答案 md 同源生成），注意答案 md 用章节内题号（简答 1-4 / 综合 1-2），spec 主观题题干也在 heading 之后按出现顺序取，两者按下标对应，别按题号 key 匹配。
+- **上传**：`<input type="file" id="file" accept=".docx,.md,...">` 用 `page.setInputFiles("#file", [绝对路径])`，`onchange` 自动触发 `app.upload()` 与识别；轮询页面文本「共识别 N 题，识别有误 M 题」，M 必须为 0。
+- **分值**：每题分值框是 `input.score_input`（24 题 24 个，按题序），用原生 value setter + `input`/`change` 事件填入；填完核对总和=试卷满分（本项目 100）。
+- **加入试卷**：点「加入试卷」→ 若含自定义题型弹「检测到新题型，是否继续」→ 点「确定」→ 弹「共 N 条数据，成功导入 N 条」→ 点确定。**此后编辑页会关闭、p2 被销毁（连接报 `page closed`/`No target with given id` 是正常完成信号，不是失败）**。
+- **改标题并保存**：重新 goto `create-exampaper`，改 `input[name="examPaperTitle"]`，点「完成」→ 弹「试卷共创建 N 道题，总分 X 分，确认完成创建？」→ 确定。
+- **验证断言**：试卷库 `/exam/paperlist` 列表出现该试卷行，题量=N、总分=X、创建者、时间正确。注意试卷库 URL 是 `paperlist`（小写无连字符），`examPaperList`/`paper-list` 均 404。
+- **目的**：把「整卷上传成考试试卷」从试错变成固定链路，并与任务 D（发作业）区分开。
+
+---
+
+## 任务 H：考试模块（发布状态 / 线上判定，2026-11-25 新增）
+
+> 考试模块和作业模块（任务 D）是**两套东西**：作业用 `work/*`，考试用 `exam/*`。用户说「考试」「监考」「批卷」走本组，说「发作业」走 D 组。整卷上传成试卷见 D14（试卷库导入），本组负责其后的发布与判定。
+
+### H1 三个易混概念与各自入口（先分清再动手）
+
+| 概念 | 含义 | 入口 URL |
+|---|---|---|
+| 试卷库 | 「卷子模板」，可反复发放；不产生学生任务 | `/mooc2-ans/exam/paperlist?clazzid=0&courseid=<cid>&ut=t&cpi=<cpi>&topicid=0&perspectiveType=0&from=` |
+| 考试 | 试卷发放到班级后生成的**学生任务**，有状态（未开始/进行中/已结束） | `/mooc2-ans/exam/test?clazzid=0&courseid=<cid>&ut=t&cpi=<cpi>&topicid=0&perspectiveType=0&from=` |
+| 监考 | 考试进行中的监控台 | `/mooc2-ans/exam/test/exam-monitor?courseid=<cid>&clazzid=0&firstIn=true&cpi=<cpi>&openc=` |
+
+- **判据**：试卷库行有「发放次数」列（0 = 从未发放）；考试列表「暂无考试」= 没有任何已发布考试。两者同时成立 → 卷子备好了但没发。
+- **注意**：考试列表默认「全部班级」，不要按 `clazzid` 猜班级；回收站 URL 参数是 `recyle=1`（平台拼写如此，不是 recycle）。
+- 另外两个可 goto 的直连：查看试卷 `/exam/lookpaper?courseid=<cid>&clazzid=0&cpi=<cpi>&ut=&paperid=<pid>`；编辑试卷 `/exam/create-exampaper?courseid=<cid>&clazzid=0&cpi=<cpi>&paperid=<pid>&ut=t`。
+
+### H2 发放设置页（topublish）：线上考试的判据来源
+
+- **入口 URL（可直接 goto，最稳）**：
+  `https://mooc2-ans.chaoxing.com/mooc2-ans/exam/test/topublish?taskid=0&clazzid=0&courseid=<cid>&ut=&cpi=<cpi>&paperid=<pid>&score=<满分>`
+- **界面结构**：上半区 = 发放对象 / 开始与截止时间 / 考试限时 / 限时提交 / 限时进入 / 防作弊设置 / PC 与移动端考试须知 / 作答要求；「高级设置」是一个 `div.settingBtn`（默认折叠），点开后展开题目设置、交卷设置、及格标准、重做设置、试卷设置、督促设置、评分设置、生生互评；底部「取消 / 发放」。
+- **线上/线下判定（实测，2026-11-25）**：
+  - 该页**没有**「考试方式 / 考试类型 / 考核方式」切换开关，全文关键词扫描 `线上`=0、`考试码/考场/纸质`=0，`线下` 仅 1 次且出现在「使用超星课堂进行第二设备直播」的说明里（"教师需提前创建超星课堂线下组织直播，学生现场进入课堂开启第二设备直播"）——这是**线上线下混合监考的附加项**，不是切换考试类型。
+  - 整套配置全是线上作答特征：在线监考（抓拍监控）、切屏控制、禁止多终端、只允许手机 APP 考试、考前网络环境检测/摄像头检测/截屏检测/人脸识别、允许指定 IP、生成考试码、微信端作答。
+  - **结论判据**：走 `exam/test/topublish` 发放流程的考试 = **线上考试**；线下（纸质/现场）考试不走这套监考配置，不能以「第二设备直播」字样误判为线下。
+- **失败原因（勿重复）**：只看页面某处出现「线下」二字就下结论；或翻遍页面找不存在的「考试方式」下拉后误判「查不到」。
+- **成功方法**：以「平台把该试卷放进考试应用的发放流程 + 全套在线监考配置 + 无类型切换」三条同时成立作为线上判据，并把 `body.innerText` 的关键词命中数打印出来留证。
+- **目的**：回答「这个考试是线上还是线下」时给出可复核的平台侧证据，不靠考试名称猜。
+
+### H3 考试是否已发布（与作业 D6 统计延迟区分）
+
+- 判 1：试卷库该行「发放次数」= 0 → 未发放。
+- 判 2：考试列表 `exam/test` 显示「暂无考试」→ 无任何已发布考试。
+- 判 3（已发布时）：考试列表按状态筛选 未开始 / 进行中 / 已结束，能看到该考试行才算发布成功。
+- **注意**：考试的发布成功判据是**考试列表出现记录**，不是「点了发放按钮后页面跳转」，也不是 `work/list`（那是作业）。
+- **目的**：与 D14「试卷入库」衔接——入库成功 ≠ 考试已发布，两者常在同一任务里连续被问到。
+
+### H4 「新建考试」的创建方式弹层
+
+- **触发**：考试列表页点「新建考试」→ 弹层「选择创建方式」，四个选项：手动创建试卷（手动编辑创建新试卷）/ 自动随机组卷（系统从已有题库随机选题）/ 使用智能组卷助手 / 创建平行试卷；底部「下一步 / 取消」。
+- **注意**：这里是**组卷方式**，不是线上/线下选择；要找考试类型别在这里找。
+- **目的**：区分「新建试卷」和「发放已有试卷」两条入口；已有试卷发放走 H2，不必新建。
+
+---
+
+## 任务 I：线下纸考发布控件（2026-11-25 新增）
+
+> 本组只沉淀**控件级「怎么点才生效」**。发布流程顺序、前馈清单、发布前终检单在独立 Skill `exam-publish`；界面语义在 `references/paper-exam/`。两者不互相复述。
+> 线下纸考/网评系统在 `v10596.kaoshi.chaoxing.com`，与 `mooc2-ans` 的课程内在线考试（任务 H）是**两套系统**——最初常把线下考试误判为线上，浪费一轮。智能导入会跳到 `mooc2-ans .../qbank/smartimport` 再回跳线下 `zjSuccess`，这是正常链路。
+
+### I1 线下考试开关与两步发布流程
+
+- **界面特征**：发布表单顶部「考试方式」开关 `a.switch[data-id="examlx"]`；源码逻辑 `if(examlx==1){ nextStepExamlx1() } else { nextStepExamlx0() }`，`examlx=1` 即线下。
+- **触发**：点线下开关 → 填表 → 点 `a.nextStep` 进入第二步发布确认页 → 点 `a#submitButton`（`.publishSubmitButton`，`onclick="pubishExam()"`）。
+- **失败原因**：在**第一步**直接 `page.click('#submitButton')` 会报 `element has a zero-sized bounding box`——第一步它位于 `div.l_setbtn.twoStep` 内，`display:none`、零尺寸。
+- **成功方法**：必须先点 `a.nextStep` 进第二步，按钮才可见可点；提交后 `pubishExam()` → `examlx==1` → `pubishExamlx1()`。
+- **首次记录**：2026-11-25。
+
+### I2 线下字段用 `_lx1` 后缀（本次最坑，误判直接卡住发布）
+
+- **界面特征**：线下可见字段 **id 带 `_lx1`、name 不带**：
+  - `input#startTime_lx1`（name=`startTime`）、`#endTime_lx1`（name=`endTime`）、`#limitTime_lx1`（name=`limitTime`）、`#passingStandard_lx1`（name=`passingStandard`）；
+  - 勾选框 `#multiHalfScoreCheckbox_lx1`、`#anonymousReview_lx1`、`#reviewFastAllocationCheckbox_lx1` 等。
+- **失败原因**：页面另有**隐藏的** `input[name=startTime]` / `limitTime=120`（线上遗留值）。填了隐藏线上字段 → 点下一步报「考试开始时间不可为空」。按 name 选会命中多个。
+- **成功方法**：一律用 `document.getElementById('startTime_lx1')` 等 id 定位；填值用原生 setter + `input`/`change` 事件（同 A6）。发布前用 evaluate 回读 `getElementById` 的值确认，不看 name。
+- **首次记录**：2026-11-25。
+
+### I3 答题时限不能大于起止时间差
+
+- **界面特征**：开始/结束时间与「考试限时」同页。
+- **触发**：填完点下一步。
+- **失败原因**：报错「时限不能大于起始时间差」。如窗口 16:00–17:30=90 分钟，却填了 120 分钟。
+- **成功方法**：时长 ≤ 窗口差；两者冲突时**问用户**改时长还是改窗口，不擅自定（属前馈决策，见 `exam-publish` Q4）。终检时由用户复核。
+- **首次记录**：2026-11-25。
+
+### I4 UEditor 须知：退回第一步会重置
+
+- **界面特征**：PC 端与移动端须知各一个 UEditor 实例，`window.UE.instants[0]`=`examPCNotes`、`[1]`=`examNotes`。
+- **失败原因**：从第二步返回第一步再进第二步，实例重新初始化，之前追加的「地点／主副监考」全部丢失，只剩默认文字。
+- **成功方法**：在**第二步**用 `window.UE.instants[k].setContent(完整内容)` 重新写入，两端都写并回读核对。不要用 `UE.getEditor()`（会重渲染写不进去）。
+- **首次记录**：2026-11-25。
+
+### I5 「已添加考生 0 人」是显示假象
+
+- **界面特征**：发布页显示「已添加考生0人」，隐藏字段 `input[name=classids]` 已是正确班级 ID（如 `155688692`）。
+- **失败原因**：平台读不到 `data-studentcount` 之类属性导致的显示 bug。
+- **成功方法**：**不要因此重新添加**（会重复考生）。以隐藏 `classids` + 发布后考试管理列表的实际人数为准（本次发布后显示 63 人）。
+- **首次记录**：2026-11-25。
+
+### I6 添加考生班级
+
+- **触发**：`span[onclick="addClazzToExam(<班级id>)"]`（本次 `155688692`）。
+- **验证**：添加后读隐藏 `classids` 确认含目标班级，不看页面那行「已添加考生N人」（见 I5）。
+- **注意**：涉及哪些班级、各多少人属前馈（见 `exam-publish` Q5），发布后班级不可随意改。
+- **首次记录**：2026-11-25。
+
+### I7 发布后通知对话框：同名输入框歧义
+
+- **界面特征**：发布成功弹「考试发布成功，是否发放考试通知？」→「是」→ 通知对话框。标题框 `input#notice_title`（name=`text`）、正文框 `textarea#notice_context`。
+- **失败原因**：页面多处 `input[name=text]`（含考试等级名称「优秀」等），`querySelector('input[name="text"]')` 会选错元素，导致「改了标题」其实是改了隐藏等级字段，回读误判。
+- **成功方法**：**一律用 id**（`notice_title` / `notice_context`）fill；回读时按 `tr` 里「通知标题」「通知内容」标签定位输入框取值，确认不含 A/B 卷（文案规则见 `exam-publish` Q6）。
+- **首次记录**：2026-11-25。
+
+### I8 课程名称/批次/场次为选填（先查 verify 标志）
+
+- **界面特征**：隐藏字段 `verifyCourse` / `verifySemester` / `verifyBatch` 均为 0 → 不校验、选填。
+- **失败原因**：用户说「把该填信息填成全的」就去硬填，但教务下拉无数据时根本填不了。
+- **成功方法**：先 evaluate 读三个 verify 标志与下拉选项数；确认为 0 且下拉无数据 → 向用户说明后留空，不硬造。
+- **首次记录**：2026-11-25。
 
 ---
 
