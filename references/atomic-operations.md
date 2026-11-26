@@ -595,7 +595,8 @@
 - **触发**：答题纸预览页数过多（本次 10 页），全是空白答题框把主观题撑到每题独占一页，打印成本与装订都浪费。目标压到最少（本次 4 栏＝一张 A3 纸正反面）。
 - **根因**：主观题（简答/综合）在 `window.param.paper.questionList` 里是 `smp-card-blank` 主框 + 若干 `smp-card-blank-extra` 额外框。每个额外框的 `lineNumber`（行数）、`zoneHeight`（像素高）被撑到极大（本次实测 148/121/97/70 行、`zoneHeight` 到 1070），每个框独占一个分页容器，PageCount 直接等于框数。内容 `content` 其实是空的，纯属空间浪费。客观题不受影响。
 - **为什么改高度不减页**：只把 `lineNumber/zoneHeight` 改小，DOM 里 `.txShort` 的 style.height 会变，但分页 `共 N 页` 不变——页数由 SmpCard 组件的 questionGroup 分组数决定，必须触发重新合并卡片。
-- **成功方法（ego-browser / page.evaluate）**：
+- **执行边界（用户 2026-11-25 明确决定，优先于下文）**：本条是**兜底知识，不是默认自动操作**。正常流程到答题纸编辑器，核对 I9 默认字段（学号+座位号必勾）后必须 `await task.handOff()` **自动暂停**，由用户自己看预览、自己调跨栏与主观题框大小；Agent 不自动改 `lineNumber`/`zoneHeight`、不搬题、不删 extra、不改注意事项、不下载 PDF。只有用户明确说"你来调 / 按 I12 自动压"时才执行下面的方法。
+- **成功方法（仅在用户明确授权后，ego-browser / page.evaluate）**：
   1. 遍历 Vue vnode 树（`document.getElementById('app')._vnode`，递归 `vnode.component` + `vnode.children`）找所有 `name === 'SmpCardBlankRect'` 的组件，其 `props.item` 是**可写响应式对象**（`__v_isReactive=true`）。
   2. 对每个 `item` 设 `lineNumber=8`、`zoneHeight=180`（10 分简答/15 分综合都够写；想更省可到 6 行/140）。改完 `window.param.paper.questionList` 会同步。
   3. **关键一步**：找到 `name === 'SmpCard'` 组件，调 `ctx.onCardHeightChange()`（内部 `scheduleMergeCard()`），触发重新合并卡片分页；等 2 秒，页数立即从 10 → 4。这一步不能省。
