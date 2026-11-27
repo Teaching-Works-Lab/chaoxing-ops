@@ -6,6 +6,12 @@ agent_created: true
 
 # 学习通操作（Chaoxing Ops）
 
+> **真实值依赖 `local-context` Skill**：收作业账号（Gitee/GitHub）等真实值按 `local-context/references/key-catalog.md` 的 `platform.*.account` 取用，MISS 走询问协议后 `set` 回本机缓存；不写进本 Skill、不上传。账号切换或用户说"这次不一样"必须重问更新。反向登记见 `local-context/references/consumers.md`。
+>
+> **具体取用**（核查/接受学生邀请前必做，反思第 3 轮补强——原仅有泛化声明、缺可执行步骤）：
+> `python3 ~/.workbuddy/skills/local-context/scripts/local_context.py get-multi platform.gitee.account platform.github.account`
+> 命中即用；MISS（exit 2）用结构化提问问用户"这次收作业用哪个 Gitee/GitHub 账号"，确认后 `set` 回缓存。每个平台可能有多个已登录账号（个人 vs 组织），**必须按当前确认的账号绑定，不凭标签页默认状态**；账号切换提示出现时以刷新后实际账号为准。绝不用缓存的密码/token 自动登录。
+
 ## Overview
 
 在学习通教师端（mooc2-ans）完成出题→题库导入→章节归位→作业发布这一套运营流程。沉淀分**两层知识 + 一层执行机制**，不要混用：
@@ -112,6 +118,16 @@ agent_created: true
 两份文件互相引用编号，不要互相复述内容。只记非显而易见、下次能省时间的内容；不要记一次性数据（具体题号、人名）。教学业务决策（出什么题、是否重复）不属于本 Skill，落在项目教学设计文档。
 
 收尾时把台账第 8 段结论落盘；**台账第 7 段「续跑点」在任务结束前必须保留**，供掉线/超时后按 P5 只补差集，禁止从零重跑。
+
+## 双向链接索引
+
+| 对端 Skill | 本 Skill → 对端 | 对端 → 本 Skill | 分工边界 |
+| --- | --- | --- | --- |
+| `exam-publish` | 开头与任务 H/I 注明：完整发布流程/前馈/终检走它 | 其 SKILL.md「与相邻 skill 的分工」注明控件原子/界面语义查本 Skill | 本 Skill 管控件怎么点；它管流程顺序与决策 |
+| `exam-word-skill` | `paper-exam/INDEX.md` 注明"试卷文档排版侧看 exam-word"双链 | 其 SKILL.md「Chain direction」注明控件层查本 Skill | 它管出卷排版；本 Skill 管平台组卷/答题纸/批阅 |
+| `local-context` | 开头声明：收作业账号走 `platform.*.account` | `local-context/references/consumers.md` 已登记 | 真实值缓存，不硬编码 |
+
+修改任一端职责边界时，同步更新对端对应行，避免单向漂移。
 
 ## Resources
 
