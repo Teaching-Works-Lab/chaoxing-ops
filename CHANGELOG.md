@@ -1,5 +1,15 @@
 # 更新记录
 
+## 2026-11-26（17:00）— 计分栏行标签「题号/得分/阅卷人」根因清除
+
+- **制度**：校字〔2026〕71号附件1 P29 原图核验——计分栏三行固定为 **题号 / 得分 / 阅卷人**，「总分」第一行末格；R30 要求阅卷人签字位。历史写法「分数 / 得分」丢掉"阅卷人"，属违规且反复出错。
+- `exam-word-skill`：`build_from_spec.py` 新增 `_canonical_score_table()`，强制把任意 spec 归一为制度三行 + 数据格留空 + legacy 告警；`verify_docx.py` 新增 `_score_table_check()` 硬门禁，标签错/数据格非空一律 FAIL。SKILL.md / pitfalls §3（加 🚨 警示）/ modes.md / template-contract.md 全部改掉「分数/得分」错误规范。
+- `exam-publish`：前馈清单新增 Q12 计分栏核对项 + 答案模板行。
+- `chaoxing-ops`：atomic-operations 新增 I13 纸卷计分栏核对点。
+- 本次智能制造装备：A 卷用户已手改正确（Agent 未动），其余三卷 DOCX + 四份 spec + 资料包 zip 已同步为「得分/阅卷人」；证据链 50 项哈希全 OK。
+
+---
+
 ## 2026-11-26 — 题头考试时长独立行 + 用户手改状态同步
 
 - `exam-word-skill`：`build_from_spec.py` 新增 `_header_duration()`，把时长渲染为**独立段落** `考试时长：【90 分钟】`，位于开闭卷行之后、学生信息行之前（校字71号附件1 P29 题头顺序）；`metadata.exam_duration` 为规范字段，旧 spec 写在 `summary` 里的「考试时间：X 分钟」自动拆出并清理，缺省 90 分钟。`modes.md` 示例、`exam-authoring-pitfalls.md` §3、SKILL.md 合规基线同步。
